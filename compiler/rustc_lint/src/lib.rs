@@ -218,6 +218,7 @@ late_lint_methods!(
         [
             // Ferrocene addition
             LintUnvalidated: LintUnvalidated,
+            BasicPass: BasicPass,
 
             ForLoopsOverFallibles: ForLoopsOverFallibles,
             DefaultCouldBeDerived: DefaultCouldBeDerived,

@@ -177,6 +177,9 @@ mod diagnostics;
 mod dynamic_casts;
 mod post_mono;
 mod thir;
+mod mcdc;
+
+pub use mcdc::BasicPass;
 
 use rustc_data_structures::fx::FxHashSet;
 use rustc_hir::def::DefKind;

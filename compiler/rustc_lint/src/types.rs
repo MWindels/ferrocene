@@ -15,7 +15,7 @@ mod improper_ctypes; // these files do the implementation for ImproperCTypesDefi
 pub(crate) use improper_ctypes::ImproperCTypesLint;
 
 // Ferrocene addition
-pub(crate) use crate::ferrocene::LintUnvalidated;
+pub(crate) use crate::ferrocene::{LintUnvalidated, BasicPass};
 use crate::lints::{
     AmbiguousWidePointerComparisons, AmbiguousWidePointerComparisonsAddrMetadataSuggestion,
     AmbiguousWidePointerComparisonsAddrSuggestion, AmbiguousWidePointerComparisonsCastSuggestion,
