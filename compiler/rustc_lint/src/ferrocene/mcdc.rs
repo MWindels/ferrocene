@@ -219,6 +219,17 @@ impl ParseTree {
         }
     }
 
+    /// Pop conditions from (the end of) a list until one is found which the parse tree contains.
+    fn last_contained_condition(self: &Self, conditions: &mut Vec<Condition>) -> Option<Condition> {
+        while let Some(condition) = conditions.pop() {
+            if self.conditions.contains_key(&condition) {
+                return Some(condition);
+            }
+        }
+
+        None
+    }
+
     /// Removes a node and all its descendants from the parse tree.
     /// Updates the parse tree's conditions vector where necessary.
     fn remove_node(self: &mut Self, node: pg::graph::NodeIndex) {
@@ -332,14 +343,20 @@ impl BDD {
 
         let mut mutable_decision = decision.clone();
         // Query instability is not an issue here because:
-        // (1) the predicate operates on individual key/value pairs,
-        // (2) the predicate has no side effects.
+        // (1) the predicate has no side effects,
+        // (2) the predicate relies only on supplied arguments,
+        // (3) the condition ordering is not yet established.
         #[allow(rustc::potential_query_instability)]
         mutable_decision.conditions.retain(|_, occurrences| -> bool {occurrences.len() > 0});
 
+        // Query instability is not an issue here because we're only now establishing a condition ordering.
+        // Instability on the conditions map will be an issue from here on out, however.
+        #[allow(rustc::potential_query_instability)]
+        let mut condition_order = Vec::from_iter(mutable_decision.conditions.keys().cloned());
+
         let mut node_map = BDDNodeMap::default();
 
-        bdd.root = Self::new_recursive(&mut bdd, &mut mutable_decision, &mut node_map);
+        bdd.root = Self::new_recursive(&mut bdd, &mut mutable_decision, &mut condition_order, &mut node_map);
 
         bdd
     }
@@ -348,18 +365,14 @@ impl BDD {
     /// a condition is selected, sub-BDDs are computed based on the resolution of the
     /// condition to true and false. If there are conditions to resolve, a BDD node
     /// is returned, otherwise `None` is returned.
-    fn new_recursive(self: &mut Self, decision: &mut ParseTree, node_map: &mut BDDNodeMap) -> Option<pg::graph::NodeIndex> {
-        // Query instability is not an issue here because:
-        // (1) all we need is an arbitrary condition,
-        // (2) the condition will be removed from the mapping during resolution.
-        #[allow(rustc::potential_query_instability)]
-        if let Some((condition, _)) = decision.conditions.iter().next() {
+    fn new_recursive(self: &mut Self, decision: &mut ParseTree, order: &mut Vec<Condition>, node_map: &mut BDDNodeMap) -> Option<pg::graph::NodeIndex> {
+        if let Some(condition) = decision.last_contained_condition(order) {
             // Compute the sub-BDDs where the condition under consideration has been resolved true and false.
             // TODO: May want to consider representing the parse tree as a tree of pointers to keep copy overhead down.
             let node_identity = BDDNodeIdentity {
-                condition: *condition,
-                resolve_true: self.new_resolution(true, &mut decision.clone(), node_map, condition),
-                resolve_false: self.new_resolution(false, &mut decision.clone(), node_map, condition),
+                condition,
+                resolve_true: self.new_resolution(true, &mut decision.clone(), &mut order.clone(), node_map, &condition),
+                resolve_false: self.new_resolution(false, &mut decision.clone(), &mut order.clone(), node_map, &condition),
             };
 
             if let Some(node) = node_map.get(&node_identity) {
@@ -388,7 +401,7 @@ impl BDD {
     /// Build out the BDD and simplify the parse tree by resolving a condition
     /// to a given boolean value. When every occurrence of the condition resolved,
     /// a BDD node representing the resolution of the remaining conditions is returned.
-    fn new_resolution(self: &mut Self, resolution: bool, decision: &mut ParseTree, node_map: &mut BDDNodeMap, condition: &Condition) -> pg::graph::NodeIndex {
+    fn new_resolution(self: &mut Self, resolution: bool, decision: &mut ParseTree, order: &mut Vec<Condition>, node_map: &mut BDDNodeMap, condition: &Condition) -> pg::graph::NodeIndex {
         if let Some(occurrences) = decision.conditions.remove(condition) {
             // Start by resolving all occurrences of the condition in the parse tree.
             for occurrence in occurrences.iter() {
@@ -414,7 +427,7 @@ impl BDD {
         }
 
         // Continue resolving additional conditions on the simplified parse tree.
-        match self.new_recursive(decision, node_map) {
+        match self.new_recursive(decision, order, node_map) {
             Some(next) => {
                 return next;
             },
